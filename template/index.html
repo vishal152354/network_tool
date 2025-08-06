@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Folder Permissions Reporter</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        body {
+            background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 20px;
+        }
+        .header {
+            width: 100%;
+            padding: 20px;
+            text-align: center;
+            font-size: 2.5em;
+        }
+        .card {
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .card h2 {
+            margin-bottom: 20px;
+            font-size: 1.6em;
+            color: #ffdd57;
+        }
+        form input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #555;
+            background-color: #333;
+            color: #fff;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 1em;
+        }
+        form button {
+            background-color: #ffdd57;
+            color: #333;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.3s, opacity 0.3s;
+            width: 100%;
+        }
+        form button:hover {
+            background-color: #ffc107;
+        }
+        form button:disabled {
+            background-color: #555;
+            color: #888;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        #status-area {
+            margin-top: 20px;
+            min-height: 50px;
+            width: 100%;
+            text-align: center;
+        }
+        #status-message {
+            font-size: 1.1em;
+            margin-bottom: 10px;
+        }
+        .download-button {
+            display: inline-block;
+            background-color: #28a745;
+            color: white;
+            padding: 10px 25px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        .download-button:hover {
+            background-color: #218838;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">network tool</div>
+    <div class="card">
+        <h2>Enter Folder Path</h2>
+        <form id="pathForm">
+            <input type="text" id="userPath" placeholder="give folder path" required />
+            <button type="submit" id="submitBtn">Generate Report</button>
+        </form>
+        <div id="status-area">
+            <p id="status-message"></p>
+            <div id="download-container"></div>
+        </div>
+    </div>
+
+    <script>
+        const pathForm = document.getElementById("pathForm");
+        const submitBtn = document.getElementById("submitBtn");
+        const userPathInput = document.getElementById("userPath");
+        const statusMessage = document.getElementById("status-message");
+        const downloadContainer = document.getElementById("download-container");
+
+        pathForm.addEventListener("submit", async (event) => {
+            event.preventDefault(); 
+            const path = userPathInput.value;
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Processing...";
+            statusMessage.textContent = "Analyzing permissions, this may take a moment...";
+            statusMessage.style.color = "#ffdd57";
+            downloadContainer.innerHTML = "";
+
+            try {
+                const response = await fetch('/submit_link', {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ link: path })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || "An unknown error occurred.");
+                }
+
+                statusMessage.textContent = "Report generated successfully!";
+                statusMessage.style.color = "#28a745";
+
+                const downloadBtn = document.createElement("a");
+                downloadBtn.href = `/download/${data.filename}`;
+                downloadBtn.textContent = "Download Report";
+                downloadBtn.className = "download-button";
+                
+                // --- THIS IS THE NEW LINE ---
+                // It tells the browser to download the file and use the original filename.
+                downloadBtn.download = data.filename; 
+
+                downloadContainer.appendChild(downloadBtn);
+
+            } catch (error) {
+                console.error("Error:", error);
+                statusMessage.textContent = `Error: ${error.message}`;
+                statusMessage.style.color = "#dc3545";
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Generate Report";
+            }
+        });
+    </script>
+</body>
+</html>
