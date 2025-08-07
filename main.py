@@ -1,10 +1,9 @@
 # main.py
 
-from fastapi import FastAPI, Request, HTTPException, Response
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 import os
-import subprocess
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import logging
@@ -13,14 +12,12 @@ import ntsecuritycon as con
 import csv
 from datetime import datetime
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
-templates = Jinja2Templates(directory="template") # Make sure you have a 'templates' folder
+templates = Jinja2Templates(directory="template")
 
-# --- Create a directory for reports ---
 REPORTS_DIR = "reports"
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
@@ -31,8 +28,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# --- REFACTORED FUNCTIONS ---
 
 def get_folder_permissions(folder_path):
     """
@@ -63,7 +58,6 @@ def get_folder_permissions(folder_path):
             access_mask = ace[1]
             ace_type = "Allow" if ace[0][0] == win32security.ACCESS_ALLOWED_ACE_TYPE else "Deny"
 
-            # Map access mask to human-readable permissions
             perms_list = []
             if (access_mask & con.FILE_ALL_ACCESS) == con.FILE_ALL_ACCESS:
                 perms_list = ["Full Control"]
@@ -85,7 +79,6 @@ def get_folder_permissions(folder_path):
             
     except Exception as e:
         logger.error(f"Could not get permissions for {folder_path}: {e}")
-        # Add an entry to indicate failure for this folder
         permissions_data.append({
             "Folder Path": folder_path,
             "Principal": "N/A",
@@ -97,9 +90,7 @@ def get_folder_permissions(folder_path):
 
 
 def get_subfolders_walk(parent_folder):
-    """
-    Finds immediate subfolders. Returns empty list on error.
-    """
+    """Finds immediate subfolders. Returns empty list on error."""
     try:
         dirpath, dirnames, filenames = next(os.walk(parent_folder))
         return [os.path.join(dirpath, name) for name in dirnames]
@@ -108,16 +99,13 @@ def get_subfolders_walk(parent_folder):
         return []
 
 def write_permissions_to_csv(data_list):
-    """
-    Writes a list of permission dictionaries to a CSV file in the 'reports' directory.
-    """
+    """Writes a list of permission dictionaries to a CSV file in the 'reports' directory."""
     if not data_list:
         return None
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     file_path = os.path.join(REPORTS_DIR, f"permissions_report_{timestamp}.csv")
     
-    # Define headers explicitly to control order
     headers = ["Folder Path", "Principal", "Type", "Permissions"]
     
     try:
@@ -126,7 +114,7 @@ def write_permissions_to_csv(data_list):
             writer.writeheader()
             writer.writerows(data_list)
         logger.info(f"Successfully generated report: {file_path}")
-        return os.path.basename(file_path) # Return only the filename
+        return os.path.basename(file_path)
     except Exception as e:
         logger.error(f"Failed to write CSV file: {e}")
         return None
@@ -135,12 +123,10 @@ def write_permissions_to_csv(data_list):
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
-    """Renders the main HTML page."""
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/submit_link")
 async def submit_link(request: Request):
-    """Receives a path, processes permissions, and returns a CSV filename."""
     data = await request.json()
     link = data.get("link")
     
@@ -149,13 +135,8 @@ async def submit_link(request: Request):
 
     logger.info(f"Processing permissions for: {link}")
 
-    # Aggregate all permissions data
     all_permissions = []
-
-    # Get permissions for the parent folder
     all_permissions.extend(get_folder_permissions(link))
-
-    # Get permissions for immediate subfolders
     subfolders_list = get_subfolders_walk(link)
     for folder in subfolders_list:
         all_permissions.extend(get_folder_permissions(folder))
@@ -163,27 +144,25 @@ async def submit_link(request: Request):
     if not all_permissions:
          raise HTTPException(status_code=500, detail="Could not retrieve any permission data.")
 
-    # Write data to CSV and get the filename
     report_filename = write_permissions_to_csv(all_permissions)
 
     if report_filename:
+       
         return JSONResponse({
             "message": "Report generated successfully.", 
-            "filename": report_filename
+            "filename": report_filename,
+            "data": all_permissions  
         })
     else:
         raise HTTPException(status_code=500, detail="Failed to generate the report file.")
 
 @app.get("/download/{filename}")
 async def download_file(filename: str):
-    """Serves the generated CSV file for download."""
     file_path = os.path.join(REPORTS_DIR, filename)
     if os.path.exists(file_path):
         return FileResponse(path=file_path, media_type='text/csv', filename=filename)
     else:
         raise HTTPException(status_code=404, detail="File not found.")
 
-# --- Uvicorn Runner ---
 if __name__ == "__main__":
-    # Assumes your script is named 'main.py'
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
