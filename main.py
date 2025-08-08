@@ -12,6 +12,7 @@ import ntsecuritycon as con
 import csv
 from datetime import datetime
 
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 def get_folder_permissions(folder_path):
     """
     Retrieves the Access Control Entries (ACEs) for a given folder path
@@ -120,18 +120,25 @@ def write_permissions_to_csv(data_list):
         return None
 
 # --- FastAPI Endpoints ---
-
 @app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+async def serve_login_page(request: Request):
+    """Serves the login page as the root."""
+    return templates.TemplateResponse("login.html", {"request": request})
 
+@app.get("/dashboard", response_class=HTMLResponse)
+async def read_root(request: Request):
+    """Serves the main dashboard page."""
+    return templates.TemplateResponse("index.html", {"request": request})
+@app.post("/logout",response_class=HTMLResponse)
+async def Leave_page(request:Request):
+    return templates.TemplateResponse("login.html",{"request": request} )
 @app.post("/submit_link")
 async def submit_link(request: Request):
     data = await request.json()
     link = data.get("link")
     
     if not link or not os.path.exists(link):
-        raise HTTPException(status_code=400, detail="Invalid or non-existent path provided.")
+        raise HTTPException(status_code=400, detail="===Not authorized to open the folder===")
 
     logger.info(f"Processing permissions for: {link}")
 
@@ -147,7 +154,6 @@ async def submit_link(request: Request):
     report_filename = write_permissions_to_csv(all_permissions)
 
     if report_filename:
-       
         return JSONResponse({
             "message": "Report generated successfully.", 
             "filename": report_filename,
