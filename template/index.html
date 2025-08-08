@@ -7,29 +7,32 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background: linear-gradient(to right, #0f2027, #203a43, #2c5364); color: #fff; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 20px 0; }
-        .header { width: 100%; padding: 20px; text-align: center; font-size: 2.5em; }
-        .card { background-color: rgba(255, 255, 255, 0.1); padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); width: 90%; max-width: 800px; text-align: center; margin-top: 20px; }
+        .header { width: 100%; padding: 20px; text-align: center; font-size: 2.5em; position: relative; }
+        .card { background-color: rgba(0,0,0,0.2); padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); width: 90%; max-width: 1075px; text-align: center; margin-top: 20px; border: 1px solid rgba(255, 255, 255, 0.2); }
         .card h2 { margin-bottom: 20px; font-size: 1.6em; color: #ffdd57; }
         form input[type="text"] { width: 100%; padding: 12px; border: 1px solid #555; background-color: #333; color: #fff; border-radius: 8px; margin-bottom: 15px; font-size: 1em; }
         form button { background-color: #ffdd57; color: #333; padding: 12px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: background-color 0.3s, opacity 0.3s; width: 100%; }
-        form button:hover { background-color: #ffc107; }
         form button:disabled { background-color: #555; color: #888; cursor: not-allowed; opacity: 0.7; }
         #status-area { margin-top: 20px; min-height: 50px; width: 100%; text-align: center; }
         #status-message { font-size: 1.1em; margin-bottom: 10px; }
-        .download-button { display: inline-block; background-color: #28a745; color: white; padding: 10px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; transition: background-color 0.3s; }
-        .download-button:hover { background-color: #218838; }
-
+        .download-button { display: inline-block; background-color: #28a745; color: white; padding: 10px 25px; text-decoration: none; border-radius: 5px; font-weight: bold; }
         #table-container { margin-top: 25px; width: 100%; overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; background-color: rgba(0, 0, 0, 0.2); }
         th, td { padding: 10px 15px; border: 1px solid #4a6a7c; text-align: left; word-break: break-all; }
         thead { background-color: #2c5364; color: #ffdd57; }
         tbody tr:nth-child(even) { background-color: rgba(255, 255, 255, 0.05); }
+        .logout-button { position: absolute; top: 25px; right: 30px; background-color: #d9534f; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold; transition: background-color 0.3s; border: none; cursor: pointer; }
+        .logout-button:hover{ background-color: #c9302c; }
+        #search-container { margin-top: 20px; width: 100%; display: none; }
+        #searchInput { width: 100%; padding: 10px; font-size: 1em; background-color: #333; color: #fff; border: 1px solid #555; border-radius: 5px; }
     </style>
 </head>
 <body>
-    <div class="header">Folder Permissions Reporter</div>
+    <div class="header">
+        Folder Permissions Reporter
+        <button type="button" id="logout-button" class="logout-button">Logout</button>
+    </div>
     <div class="card">
-        <h2>Enter Folder Path</h2>
         <form id="pathForm">
             <input type="text" id="userPath" placeholder="e.g., C:\Users\YourUser\Documents or \\server\share" required />
             <button type="submit" id="submitBtn">Generate Report</button>
@@ -37,6 +40,9 @@
         <div id="status-area">
             <p id="status-message"></p>
             <div id="download-container"></div>
+        </div>
+        <div id="search-container">
+            <input type="text" id="searchInput" placeholder="Search by Principal ID (e.g., BUILTIN\Users)...">
         </div>
         <div id="table-container"></div>
     </div>
@@ -48,17 +54,19 @@
         const statusMessage = document.getElementById("status-message");
         const downloadContainer = document.getElementById("download-container");
         const tableContainer = document.getElementById("table-container");
+        const searchContainer = document.getElementById("search-container");
+        const searchInput = document.getElementById("searchInput");
+        const logoutButton = document.getElementById("logout-button");
+
+        let fullReportData = [];
+
         function createTable(data) {
             if (!data || data.length === 0) return;
-
             tableContainer.innerHTML = "";
-
             const table = document.createElement("table");
             const thead = document.createElement("thead");
             const tbody = document.createElement("tbody");
             const headerRow = document.createElement("tr");
-
-            
             const headers = Object.keys(data[0]);
             headers.forEach(headerText => {
                 const th = document.createElement("th");
@@ -66,8 +74,6 @@
                 headerRow.appendChild(th);
             });
             thead.appendChild(headerRow);
-
-           
             data.forEach(rowData => {
                 const row = document.createElement("tr");
                 headers.forEach(header => {
@@ -77,58 +83,122 @@
                 });
                 tbody.appendChild(row);
             });
-
             table.appendChild(thead);
             table.appendChild(tbody);
             tableContainer.appendChild(table);
         }
 
+        function downloadFilteredCSV() {
+            const searchTerm = searchInput.value.toLowerCase();
+            
+            const filteredData = fullReportData.filter(row => {
+                const principal = row.Principal || '';
+                return principal.toLowerCase().includes(searchTerm);
+            });
+
+            if (filteredData.length === 0) {
+                alert("No data to download for the current filter.");
+                return;
+            }
+
+            const headers = Object.keys(filteredData[0]);
+            const csvRows = [headers.join(',')];
+
+            filteredData.forEach(row => {
+                const values = headers.map(header => {
+                    return `"${row[header]}"`;
+                });
+                csvRows.push(values.join(','));
+            });
+
+            const csvContent = csvRows.join('\n');
+            
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "report.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
         pathForm.addEventListener("submit", async (event) => {
             event.preventDefault(); 
             const path = userPathInput.value;
-
-           
             submitBtn.disabled = true;
             submitBtn.textContent = "Processing...";
-            statusMessage.textContent = "Analyzing permissions, this may take a moment...";
-            statusMessage.style.color = "#ffdd57";
+            statusMessage.textContent = "Analyzing permissions...";
             downloadContainer.innerHTML = "";
-            tableContainer.innerHTML = ""; 
+            tableContainer.innerHTML = "";
+            searchContainer.style.display = "none";
+            searchInput.value = "";
+            fullReportData = [];
+
             try {
                 const response = await fetch('/submit_link', {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ link: path })
                 });
-
                 const result = await response.json();
-
                 if (!response.ok) {
                     throw new Error(result.detail || "An unknown error occurred.");
                 }
-
-                
                 statusMessage.textContent = "Report generated successfully!";
-                statusMessage.style.color = "#28a745";
-
                 
-                createTable(result.data);
+                fullReportData = result.data;
+                createTable(fullReportData);
 
-                
-                const downloadBtn = document.createElement("a");
-                downloadBtn.href = `/download/${result.filename}`;
-                downloadBtn.textContent = "Download Full Report (CSV)";
-                downloadBtn.className = "download-button";
-                downloadBtn.download = result.filename; 
-                downloadContainer.appendChild(downloadBtn);
+                if (result.data && result.data.length > 0) {
+                    searchContainer.style.display = "block";
+                    const downloadBtn = document.createElement("a");
+                    downloadBtn.href = "#";
+                    downloadBtn.textContent = "Download Report (CSV)";
+                    downloadBtn.className = "download-button";
+                    
+                    downloadBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        downloadFilteredCSV();
+                    });
 
+                    downloadContainer.appendChild(downloadBtn);
+                }
             } catch (error) {
-                console.error("Error:", error);
                 statusMessage.textContent = `Error: ${error.message}`;
-                statusMessage.style.color = "#dc3545";
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = "Generate Report";
+            }
+        });
+
+        searchInput.addEventListener('keyup', () => {
+            const searchTerm = searchInput.value.toLowerCase();
+            const rows = tableContainer.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+                const principalCell = row.querySelectorAll('td')[1];
+                if (principalCell) {
+                    const cellText = principalCell.textContent.toLowerCase();
+                    if (cellText.includes(searchTerm)) {
+                        row.style.display = "";
+                    } else {
+                        row.style.display = "none";
+                    }
+                }
+            });
+        });
+        
+        logoutButton.addEventListener('click', async () => {
+            try {
+                const response = await fetch('/logout', { method: 'POST' });
+                if (response.ok) {
+                    window.location.href = '/';
+                } else {
+                    console.error('Logout failed.');
+                }
+            } catch (error) {
+                console.error('Error during logout:', error);
             }
         });
     </script>
